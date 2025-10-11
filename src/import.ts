@@ -27,18 +27,44 @@ interface ImportStats {
   skipped: number;
 }
 
-const CREDENTIALS_FILE = 'database_credentials.xlsx';
-const BACKUP_DIR = 'backups';
-const LOG_DIR = 'logs';
+const DEFAULT_CREDENTIALS_FILE = 'database_credentials.xlsx';
+const DEFAULT_BACKUP_DIR = 'backups';
+const DEFAULT_LOG_DIR = 'logs';
+
+function parseArgs() {
+  const args = process.argv.slice(2);
+  const credentialsIndex = args.findIndex((arg) => arg === '--credentials' || arg === '-c');
+  const backupDirIndex = args.findIndex((arg) => arg === '--input' || arg === '-i');
+
+  const credentialsFile = credentialsIndex !== -1 ? args[credentialsIndex + 1] : DEFAULT_CREDENTIALS_FILE;
+  const backupDir = backupDirIndex !== -1 ? args[backupDirIndex + 1] : DEFAULT_BACKUP_DIR;
+
+  // Show help if requested
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log(chalk.bold.cyan('\n📚 MySQL Database Import Tool - Usage\n'));
+    console.log('Usage: npm run import [options]\n');
+    console.log('Options:');
+    console.log('  -c, --credentials <file>   Path to credentials XLSX file (default: database_credentials.xlsx)');
+    console.log('  -i, --input <dir>          Input directory containing backups (default: backups)');
+    console.log('  -h, --help                 Show this help message\n');
+    console.log('Examples:');
+    console.log('  npm run import');
+    console.log('  npm run import -- --credentials my_dbs.xlsx');
+    console.log('  npm run import -- -c prod_databases.xlsx -i prod_backups\n');
+    process.exit(0);
+  }
+
+  return { credentialsFile, backupDir, logDir: DEFAULT_LOG_DIR };
+}
 
 class Logger {
   private logFile: string;
   private logStream: string[] = [];
 
-  constructor() {
+  constructor(logDir: string) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T');
     const dateTime = `${timestamp[0]}_${timestamp[1].split('-')[0]}`;
-    this.logFile = join(LOG_DIR, `import_${dateTime}.log`);
+    this.logFile = join(logDir, `import_${dateTime}.log`);
   }
 
   log(message: string, level: 'info' | 'error' | 'warning' | 'success' = 'info') {
@@ -76,18 +102,18 @@ class Logger {
   }
 }
 
-async function readCredentials(logger: Logger): Promise<DatabaseCredentials[]> {
-  if (!existsSync(CREDENTIALS_FILE)) {
-    logger.log(`Credentials file not found: ${CREDENTIALS_FILE}`, 'error');
-    logger.log('Please create database_credentials.xlsx with your database information.', 'error');
+async function readCredentials(credentialsFile: string, logger: Logger): Promise<DatabaseCredentials[]> {
+  if (!existsSync(credentialsFile)) {
+    logger.log(`Credentials file not found: ${credentialsFile}`, 'error');
+    logger.log('Please create the credentials XLSX file with your database information.', 'error');
     process.exit(1);
   }
 
-  logger.log(`Reading credentials from ${CREDENTIALS_FILE}`, 'info');
+  logger.log(`Reading credentials from ${credentialsFile}`, 'info');
 
   try {
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(CREDENTIALS_FILE);
+    await workbook.xlsx.readFile(credentialsFile);
     const worksheet = workbook.worksheets[0];
 
     const databases: DatabaseCredentials[] = [];
@@ -262,21 +288,22 @@ async function importDatabase(
 }
 
 async function main() {
-  const logger = new Logger();
+  const config = parseArgs();
+  const logger = new Logger(config.logDir);
 
   console.log(chalk.bold.cyan('\n' + '='.repeat(60)));
   console.log(chalk.bold.cyan('🚀 MySQL Database Import Tool'));
   console.log(chalk.bold.cyan('='.repeat(60) + '\n'));
 
   // Check if backup directory exists
-  if (!existsSync(BACKUP_DIR)) {
-    logger.log(`Backup directory not found: ${BACKUP_DIR}`, 'error');
+  if (!existsSync(config.backupDir)) {
+    logger.log(`Backup directory not found: ${config.backupDir}`, 'error');
     logger.log('Please ensure you have copied the backups folder from the old server.', 'error');
     process.exit(1);
   }
 
   // Read credentials
-  const databases = await readCredentials(logger);
+  const databases = await readCredentials(config.credentialsFile, logger);
 
   // Get root credentials
   const rootCreds = await getRootCredentials();
@@ -297,7 +324,7 @@ async function main() {
     console.log(chalk.bold.cyan('='.repeat(60)));
 
     // Find backup file
-    const backupFile = findBackupFile(dbInfo.database_name, BACKUP_DIR);
+    const backupFile = findBackupFile(dbInfo.database_name, config.backupDir);
 
     if (!backupFile) {
       logger.log(`No backup file found for ${dbInfo.database_name}, skipping...`, 'warning');

@@ -19,21 +19,47 @@ interface ExportStats {
   failed: number;
 }
 
-const CREDENTIALS_FILE = 'database_credentials.xlsx';
-const BACKUP_DIR = 'backups';
-const LOG_DIR = 'logs';
+const DEFAULT_CREDENTIALS_FILE = 'database_credentials.xlsx';
+const DEFAULT_BACKUP_DIR = 'backups';
+const DEFAULT_LOG_DIR = 'logs';
+
+function parseArgs() {
+  const args = process.argv.slice(2);
+  const credentialsIndex = args.findIndex((arg) => arg === '--credentials' || arg === '-c');
+  const backupDirIndex = args.findIndex((arg) => arg === '--output' || arg === '-o');
+
+  const credentialsFile = credentialsIndex !== -1 ? args[credentialsIndex + 1] : DEFAULT_CREDENTIALS_FILE;
+  const backupDir = backupDirIndex !== -1 ? args[backupDirIndex + 1] : DEFAULT_BACKUP_DIR;
+
+  // Show help if requested
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log(chalk.bold.cyan('\n📚 MySQL Database Export Tool - Usage\n'));
+    console.log('Usage: npm run export [options]\n');
+    console.log('Options:');
+    console.log('  -c, --credentials <file>   Path to credentials XLSX file (default: database_credentials.xlsx)');
+    console.log('  -o, --output <dir>         Output directory for backups (default: backups)');
+    console.log('  -h, --help                 Show this help message\n');
+    console.log('Examples:');
+    console.log('  npm run export');
+    console.log('  npm run export -- --credentials my_dbs.xlsx');
+    console.log('  npm run export -- -c prod_databases.xlsx -o prod_backups\n');
+    process.exit(0);
+  }
+
+  return { credentialsFile, backupDir, logDir: DEFAULT_LOG_DIR };
+}
 
 class Logger {
   private logFile: string;
   private logStream: string[] = [];
 
-  constructor() {
+  constructor(logDir: string) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T');
     const dateTime = `${timestamp[0]}_${timestamp[1].split('-')[0]}`;
-    this.logFile = join(LOG_DIR, `export_${dateTime}.log`);
+    this.logFile = join(logDir, `export_${dateTime}.log`);
 
-    if (!existsSync(LOG_DIR)) {
-      mkdirSync(LOG_DIR, { recursive: true });
+    if (!existsSync(logDir)) {
+      mkdirSync(logDir, { recursive: true });
     }
   }
 
@@ -72,18 +98,18 @@ class Logger {
   }
 }
 
-async function readCredentials(logger: Logger): Promise<DatabaseCredentials[]> {
-  if (!existsSync(CREDENTIALS_FILE)) {
-    logger.log(`Credentials file not found: ${CREDENTIALS_FILE}`, 'error');
-    logger.log('Please create database_credentials.xlsx with your database information.', 'error');
+async function readCredentials(credentialsFile: string, logger: Logger): Promise<DatabaseCredentials[]> {
+  if (!existsSync(credentialsFile)) {
+    logger.log(`Credentials file not found: ${credentialsFile}`, 'error');
+    logger.log('Please create the credentials XLSX file with your database information.', 'error');
     process.exit(1);
   }
 
-  logger.log(`Reading credentials from ${CREDENTIALS_FILE}`, 'info');
+  logger.log(`Reading credentials from ${credentialsFile}`, 'info');
 
   try {
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(CREDENTIALS_FILE);
+    await workbook.xlsx.readFile(credentialsFile);
     const worksheet = workbook.worksheets[0];
 
     const databases: DatabaseCredentials[] = [];
@@ -113,12 +139,12 @@ async function readCredentials(logger: Logger): Promise<DatabaseCredentials[]> {
   }
 }
 
-function createBackupDirectory(logger: Logger): string {
-  if (!existsSync(BACKUP_DIR)) {
-    mkdirSync(BACKUP_DIR, { recursive: true });
-    logger.log(`Created backup directory: ${BACKUP_DIR}`, 'info');
+function createBackupDirectory(backupDir: string, logger: Logger): string {
+  if (!existsSync(backupDir)) {
+    mkdirSync(backupDir, { recursive: true });
+    logger.log(`Created backup directory: ${backupDir}`, 'info');
   }
-  return BACKUP_DIR;
+  return backupDir;
 }
 
 async function dumpDatabase(
@@ -187,17 +213,18 @@ async function dumpDatabase(
 }
 
 async function main() {
-  const logger = new Logger();
+  const config = parseArgs();
+  const logger = new Logger(config.logDir);
 
   console.log(chalk.bold.cyan('\n' + '='.repeat(60)));
   console.log(chalk.bold.cyan('🚀 MySQL Database Export Tool'));
   console.log(chalk.bold.cyan('='.repeat(60) + '\n'));
 
   // Read credentials
-  const databases = await readCredentials(logger);
+  const databases = await readCredentials(config.credentialsFile, logger);
 
   // Create backup directory
-  const backupPath = createBackupDirectory(logger);
+  const backupPath = createBackupDirectory(config.backupDir, logger);
 
   // Backup each database
   const stats: ExportStats = {

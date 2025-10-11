@@ -118,6 +118,52 @@ npm run create-sample  # Create sample XLSX template
 npm run build          # Compile TypeScript to JavaScript
 ```
 
+### CLI Arguments
+
+Both export and import scripts support command-line arguments for flexibility:
+
+**Export:**
+```bash
+# Use default file (database_credentials.xlsx)
+npm run export
+
+# Specify custom credentials file
+npm run export -- --credentials prod_databases.xlsx
+
+# Specify custom output directory
+npm run export -- --output prod_backups
+
+# Both options
+npm run export -- -c my_dbs.xlsx -o my_backups
+
+# Show help
+npm run export -- --help
+```
+
+**Import:**
+```bash
+# Use defaults
+npm run import
+
+# Specify custom credentials file
+npm run import -- --credentials prod_databases.xlsx
+
+# Specify custom backup directory
+npm run import -- --input prod_backups
+
+# Both options
+npm run import -- -c my_dbs.xlsx -i my_backups
+
+# Show help
+npm run import -- --help
+```
+
+**Options:**
+- `-c, --credentials <file>` - Path to credentials XLSX file (default: `database_credentials.xlsx`)
+- `-o, --output <dir>` - Output directory for backups (export only, default: `backups`)
+- `-i, --input <dir>` - Input directory containing backups (import only, default: `backups`)
+- `-h, --help` - Show help message
+
 ## File Structure
 
 ```
