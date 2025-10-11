@@ -1,12 +1,14 @@
 # Backup files (sensitive data)
-backups/
+backups/*
+!backups/.gitkeep
 *.sql
 
 # Credentials files (sensitive)
 database_credentials.xlsx
 
 # Log files
-logs/
+logs/*
+!logs/.gitkeep
 *.log
 
 # Node.js
