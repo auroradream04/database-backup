@@ -9,16 +9,10 @@ database_credentials.xlsx
 logs/
 *.log
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-ENV/
-.venv
+# Node.js
+node_modules/
+dist/
+*.tsbuildinfo
 
 # OS files
 .DS_Store
