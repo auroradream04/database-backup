@@ -164,6 +164,7 @@ async function dumpDatabase(
       `--host=${host}`,
       `--user=${username}`,
       `--password=${password}`,
+      '--skip-ssl',
       '--single-transaction',
       '--routines',
       '--triggers',

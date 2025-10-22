@@ -205,6 +205,7 @@ async function createDatabaseAndUser(
       `--host=${rootCreds.host}`,
       `--user=${rootCreds.user}`,
       `--password=${rootCreds.password}`,
+      '--skip-ssl',
       '-e',
       sqlCommands,
     ];
@@ -247,6 +248,7 @@ async function importDatabase(
       `--host=${host}`,
       `--user=${username}`,
       `--password=${password}`,
+      '--skip-ssl',
       database_name,
     ];
 
