@@ -253,11 +253,10 @@ async function importDatabaseWithHost(
 
     const mysql = spawn('mysql', args);
     const errors: string[] = [];
+    let stdinClosed = false;
 
-    // Read and pipe the SQL file
+    // Read SQL file content
     const sqlContent = readFileSync(backupFile);
-    mysql.stdin.write(sqlContent);
-    mysql.stdin.end();
 
     mysql.stderr.on('data', (data) => {
       errors.push(data.toString());
@@ -274,8 +273,24 @@ async function importDatabaseWithHost(
     });
 
     mysql.on('error', (error) => {
+      stdinClosed = true;
       resolve(false);
     });
+
+    mysql.stdin.on('error', (error) => {
+      stdinClosed = true;
+      resolve(false);
+    });
+
+    // Write data only if stdin is writable
+    try {
+      if (!stdinClosed) {
+        mysql.stdin.write(sqlContent);
+        mysql.stdin.end();
+      }
+    } catch (error) {
+      resolve(false);
+    }
 
     // 10 minute timeout
     setTimeout(() => {
