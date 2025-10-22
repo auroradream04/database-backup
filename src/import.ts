@@ -234,18 +234,17 @@ async function createDatabaseAndUser(
   });
 }
 
-async function importDatabase(
+async function importDatabaseWithHost(
   dbInfo: DatabaseCredentials,
   backupFile: string,
+  targetHost: string,
   logger: Logger
 ): Promise<boolean> {
-  const { database_name, username, password, host } = dbInfo;
-
-  logger.log(`Importing backup: ${database_name}`, 'info');
+  const { database_name, username, password } = dbInfo;
 
   return new Promise((resolve) => {
     const args = [
-      `--host=${host}`,
+      `--host=${targetHost}`,
       `--user=${username}`,
       `--password=${password}`,
       '--skip-ssl',
@@ -267,26 +266,52 @@ async function importDatabase(
     mysql.on('close', (code) => {
       if (code === 0) {
         const sizeMB = (sqlContent.length / (1024 * 1024)).toFixed(2);
-        logger.log(`Import successful: ${database_name} (${sizeMB} MB)`, 'success');
+        logger.log(`Import successful: ${database_name} (${sizeMB} MB) using host: ${targetHost}`, 'success');
         resolve(true);
       } else {
-        logger.log(`Import failed for ${database_name}: ${errors.join('')}`, 'error');
         resolve(false);
       }
     });
 
     mysql.on('error', (error) => {
-      logger.log(`Error importing ${database_name}: ${error.message}`, 'error');
       resolve(false);
     });
 
     // 10 minute timeout
     setTimeout(() => {
       mysql.kill();
-      logger.log(`Import timeout for ${database_name} (exceeded 10 minutes)`, 'error');
       resolve(false);
     }, 10 * 60 * 1000);
   });
+}
+
+async function importDatabase(
+  dbInfo: DatabaseCredentials,
+  backupFile: string,
+  logger: Logger
+): Promise<boolean> {
+  const { database_name, host } = dbInfo;
+
+  logger.log(`Importing backup: ${database_name}`, 'info');
+
+  // Try with the specified host first
+  let success = await importDatabaseWithHost(dbInfo, backupFile, host, logger);
+
+  if (!success && host === 'localhost') {
+    // If localhost failed, try 127.0.0.1
+    logger.log(`Localhost failed, retrying with 127.0.0.1...`, 'warning');
+    success = await importDatabaseWithHost(dbInfo, backupFile, '127.0.0.1', logger);
+  } else if (!success && host === '127.0.0.1') {
+    // If 127.0.0.1 failed, try localhost
+    logger.log(`127.0.0.1 failed, retrying with localhost...`, 'warning');
+    success = await importDatabaseWithHost(dbInfo, backupFile, 'localhost', logger);
+  }
+
+  if (!success) {
+    logger.log(`Import failed for ${database_name} with both connection methods`, 'error');
+  }
+
+  return success;
 }
 
 async function main() {

@@ -147,21 +147,18 @@ function createBackupDirectory(backupDir: string, logger: Logger): string {
   return backupDir;
 }
 
-async function dumpDatabase(
+async function dumpDatabaseWithHost(
   dbInfo: DatabaseCredentials,
   backupPath: string,
+  targetHost: string,
+  backupFile: string,
   logger: Logger
 ): Promise<boolean> {
-  const { database_name, username, password, host } = dbInfo;
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T');
-  const dateTime = `${timestamp[0]}_${timestamp[1].split('-')[0]}`;
-  const backupFile = join(backupPath, `${database_name}_${dateTime}.sql`);
-
-  logger.log(`Starting backup: ${database_name}`, 'info');
+  const { database_name, username, password } = dbInfo;
 
   return new Promise((resolve) => {
     const args = [
-      `--host=${host}`,
+      `--host=${targetHost}`,
       `--user=${username}`,
       `--password=${password}`,
       '--skip-ssl',
@@ -191,26 +188,55 @@ async function dumpDatabase(
         const buffer = Buffer.concat(chunks);
         writeFileSync(backupFile, buffer);
         const sizeMB = (buffer.length / (1024 * 1024)).toFixed(2);
-        logger.log(`Backup successful: ${database_name} (${sizeMB} MB)`, 'success');
+        logger.log(`Backup successful: ${database_name} (${sizeMB} MB) using host: ${targetHost}`, 'success');
         resolve(true);
       } else {
-        logger.log(`Backup failed for ${database_name}: ${errors.join('')}`, 'error');
         resolve(false);
       }
     });
 
     mysqldump.on('error', (error) => {
-      logger.log(`Error backing up ${database_name}: ${error.message}`, 'error');
       resolve(false);
     });
 
     // 5 minute timeout
     setTimeout(() => {
       mysqldump.kill();
-      logger.log(`Backup timeout for ${database_name} (exceeded 5 minutes)`, 'error');
       resolve(false);
     }, 5 * 60 * 1000);
   });
+}
+
+async function dumpDatabase(
+  dbInfo: DatabaseCredentials,
+  backupPath: string,
+  logger: Logger
+): Promise<boolean> {
+  const { database_name, host } = dbInfo;
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T');
+  const dateTime = `${timestamp[0]}_${timestamp[1].split('-')[0]}`;
+  const backupFile = join(backupPath, `${database_name}_${dateTime}.sql`);
+
+  logger.log(`Starting backup: ${database_name}`, 'info');
+
+  // Try with the specified host first
+  let success = await dumpDatabaseWithHost(dbInfo, backupPath, host, backupFile, logger);
+
+  if (!success && host === 'localhost') {
+    // If localhost failed, try 127.0.0.1
+    logger.log(`Localhost failed, retrying with 127.0.0.1...`, 'warning');
+    success = await dumpDatabaseWithHost(dbInfo, backupPath, '127.0.0.1', backupFile, logger);
+  } else if (!success && host === '127.0.0.1') {
+    // If 127.0.0.1 failed, try localhost
+    logger.log(`127.0.0.1 failed, retrying with localhost...`, 'warning');
+    success = await dumpDatabaseWithHost(dbInfo, backupPath, 'localhost', backupFile, logger);
+  }
+
+  if (!success) {
+    logger.log(`Backup failed for ${database_name} with both connection methods`, 'error');
+  }
+
+  return success;
 }
 
 async function main() {
